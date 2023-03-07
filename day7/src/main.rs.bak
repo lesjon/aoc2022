@@ -1,0 +1,135 @@
+const MAX_SIZE: i32 = 100000;
+
+enum LineType {
+    CdUp,
+    CdRoot,
+    Cd,
+    Ls,
+    File,
+    Directory
+}
+
+fn parse_line(line: &str) -> (LineType, Option<&str>) {
+    if line.starts_with("$ cd ..")     { return (LineType::CdUp, None); }
+    else if line.starts_with("$ cd /") { return (LineType::CdRoot, None); }
+    else if line.starts_with("$ cd ")  { return (LineType::Cd, Some(&line[5..])); }
+    else if line.starts_with("$ ls")   { return (LineType::Ls, None); }
+    else if line.starts_with("dir")    { return (LineType::Directory, None); }
+    else {return (LineType::File, Some(&line[5..]))};
+}
+
+#[derive(Debug)]
+struct File {
+    name: String,
+    size: i32
+}
+
+#[derive(Debug)]
+struct Directory {
+    name: String,
+    files: Vec<File>,
+    directories: Vec<Directory>
+}
+
+#[derive(Debug)]
+struct FileSystem {
+    root: Directory
+}
+
+impl Directory {
+    fn new(name: &str) -> Self {
+        Self {
+            name: String::from(name),
+            files: vec![],
+            directories: vec![]
+        }
+    }
+
+    fn from(line: &str) -> Self {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if words.len() != 2 {
+            panic!("file line did not have two parts");
+        }
+        Self::new(words[1])
+    }
+}
+
+impl File {
+    fn from(line: &str) -> Self {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if words.len() != 2 {
+            panic!("file line did not have two parts");
+        }
+        File { name: String::from(words[1]), size: words[0].parse().unwrap() }
+    }
+}
+
+impl FileSystem {
+    fn new() -> Self {
+        let root = Directory::new("/");
+        FileSystem { 
+            root
+        }
+    }
+}
+
+fn main() {
+    let input = include_str!("test.txt");
+    println!("input: {}", input);
+    let mut file_system = FileSystem::new();
+    let mut cwd_stack: Vec<&mut Directory> = vec![&mut file_system.root];
+    let mut stack: Vec<i32> = vec![];
+    
+    for line in input.lines() {
+        println!("{}", line);
+        match parse_line(line) {
+            (LineType::CdRoot, _) => {
+                println!("Found 'cd /'");
+                cwd_stack.drain(1..);},
+            (LineType::CdUp, _) => {
+                println!("Found 'cdup'");
+                cwd_stack.pop();},
+            (LineType::Directory, Some(name)) => {
+                println!("Found 'dir {}'", name);
+                if let Some(cwd) = cwd_stack.pop(){
+                    let new_dir = Directory::from(line);
+                    cwd.directories.push(new_dir);
+                    cwd_stack.push(cwd);
+                }
+            },
+            (LineType::File, Some(name)) => {
+                println!("Found 'file {}'", name);
+                if let Some(cwd) = cwd_stack.pop(){
+                    let file = File::from(line);
+                    cwd.files.push(file);
+                    cwd_stack.push(cwd);
+                }
+            },
+            (LineType::Cd, Some(name)) => {
+                println!("Found 'cd {}'", name);
+                if let Some(cwd) = cwd_stack.pop(){
+                    let child_opt = cwd.directories.iter_mut()
+                        .find(|dir| dir.name == name);
+                    cwd_stack.push(cwd);
+                    match child_opt {
+                        Some(child) => cwd_stack.push(child),
+                        None => {}
+                    }
+                }
+            },
+            (LineType::Cd, None) => {
+                println!("Found 'cd None'");
+            },
+            (LineType::Directory, None) => {
+                println!("Found 'dir None'");
+            },
+            (LineType::File, None) => {
+                println!("Found 'file None'");
+            },
+            (LineType::Ls, _) => {
+                println!("Found 'ls'");
+            }
+        }
+    }
+    print!("{:?}", file_system);
+}
